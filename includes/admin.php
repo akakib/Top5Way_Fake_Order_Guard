@@ -52,7 +52,7 @@ function t5fob_render_page() {
 	}
 	echo '<div class="wrap t5fob-wrap"><h1>Fake Order Guard</h1>';
 	if ( ! t5fob_whatsapp_number() ) {
-		echo '<div class="notice notice-warning"><p>Add your WhatsApp number in <a href="' . esc_url( t5fob_page_url( array( 'tab' => 'settings' ) ) ) . '">Settings</a>. Until then blocked customers only see a message asking them to contact you.</p></div>';
+		echo '<div class="notice notice-warning"><p>Add your WhatsApp number in <a href="' . esc_url( t5fob_page_url( array( 'tab' => 'settings' ) ) ) . '">Settings</a>. Until then blocked customers only see a message asking them to contact you, and repeat orders are not stopped.</p></div>';
 	}
 	if ( isset( $_GET['saved'] ) ) {
 		echo '<div class="notice notice-success is-dismissible"><p>Saved.</p></div>';
@@ -233,9 +233,15 @@ function t5fob_tab_settings() {
 			<span class="t5fob-muted">Office and team connections, one per line. End with * for a whole range (203.0.113.*). Orders from these are never stopped.</span></p>
 		<p><label><input type="checkbox" name="behind_proxy" value="1" <?php checked( $s['behind_proxy'] ); ?>> <strong>This site is behind Cloudflare or another proxy</strong></label><br>
 			<span class="t5fob-muted">Tick this only if every blocked attempt shows the same IP. Leave it off otherwise, so nobody can fake their IP.</span></p>
+		<?php if ( ! $s['behind_proxy'] && ! empty( $_SERVER['HTTP_CF_CONNECTING_IP'] ) ) : ?>
+			<div class="notice notice-warning inline"><p>This site looks like it is behind Cloudflare. Tick the box above, or real customers may be stopped as one IP.</p></div>
+		<?php endif; ?>
 		<h2>Repeat orders</h2>
 		<p><label><input type="checkbox" name="repeat_on" value="1" <?php checked( $s['repeat_on'] ); ?>> <strong>Send repeat orders to WhatsApp instead of placing them</strong></label><br>
 			<span class="t5fob-muted">One phone can place a few orders at once, then gets one more each time the hours below pass. A customer with no record is treated as new, not as bad.</span></p>
+		<?php if ( ! t5fob_whatsapp_number() ) : ?>
+			<div class="notice notice-warning inline"><p>Repeat orders are not stopped until you add a WhatsApp number above.</p></div>
+		<?php endif; ?>
 		<?php foreach ( array( 'good' => 'Good record', 'none' => 'No record', 'bad' => 'Bad record' ) as $k => $label ) : ?>
 			<p><strong><?php echo esc_html( $label ); ?></strong><br>
 				<label>Orders at once <input type="number" name="<?php echo esc_attr( "repeat_{$k}_c" ); ?>" min="1" max="48" value="<?php echo esc_attr( $s[ "repeat_{$k}_c" ] ); ?>"></label>

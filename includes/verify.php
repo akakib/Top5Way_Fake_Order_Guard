@@ -113,7 +113,8 @@ function t5fob_record_type( $order_id ) {
 function t5fob_repeat_rule( $phone, $device, $ip ) {
 	global $wpdb;
 	$s = t5fob_settings();
-	if ( ! $s['repeat_on'] ) {
+	// A repeat customer may be real: with no WhatsApp number there is nowhere to send them, so the order goes through.
+	if ( ! $s['repeat_on'] || ! t5fob_whatsapp_number() ) {
 		return null;
 	}
 	$t = t5fob_table( 'recent' );
@@ -131,9 +132,7 @@ function t5fob_repeat_rule( $phone, $device, $ip ) {
 		}
 		$ips += $r->ip === $ip ? 1 : 0;
 	}
-	// A proxy nobody told us about makes all customers look like one IP: the IP count means nothing then.
-	$ip_counts = $s['behind_proxy'] || empty( $_SERVER['HTTP_CF_CONNECTING_IP'] );
-	if ( count( $numbers ) >= (int) $s['repeat_device'] || ( $ip_counts && $ips >= (int) $s['repeat_ip'] ) ) {
+	if ( count( $numbers ) >= (int) $s['repeat_device'] || $ips >= (int) $s['repeat_ip'] ) {
 		return (object) array( 'id' => 0, 'type' => 'repeat' );
 	}
 
