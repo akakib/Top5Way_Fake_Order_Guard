@@ -23,6 +23,20 @@ add_action( 'template_redirect', function () {
 	$_COOKIE['t5fob_did'] = $id;
 } );
 
+/**
+ * The visitor's IP from the connection itself. Headers like X-Forwarded-For can be typed by anyone,
+ * so they count only when the owner says a proxy sits in front, and then only the proxy's own entry.
+ */
+function t5fob_ip() {
+	$ip = $_SERVER['REMOTE_ADDR'] ?? '';
+	if ( t5fob_settings()['behind_proxy'] ) {
+		$list = explode( ',', (string) ( $_SERVER['HTTP_X_FORWARDED_FOR'] ?? '' ) );
+		$real = trim( $_SERVER['HTTP_CF_CONNECTING_IP'] ?? end( $list ) );
+		$ip   = filter_var( $real, FILTER_VALIDATE_IP ) ? $real : $ip;
+	}
+	return strtolower( (string) $ip );
+}
+
 function t5fob_current_device() {
 	return t5fob_clean_device( $_COOKIE['t5fob_did'] ?? '' );
 }
@@ -32,6 +46,7 @@ add_action( 'woocommerce_checkout_create_order', function ( $order ) {
 	if ( $did ) {
 		$order->update_meta_data( '_t5fob_device', $did );
 	}
+	$order->update_meta_data( '_t5fob_ip', t5fob_ip() );
 } );
 
 // Runs after WooCommerce's own checks and before the order exists.
@@ -44,7 +59,7 @@ function t5fob_check_checkout( $data, $errors ) {
 	}
 	$phone  = t5fob_phone( $data['billing_phone'] ?? '' );
 	$device = t5fob_current_device();
-	$ip     = strtolower( (string) WC_Geolocation::get_ip_address() );
+	$ip     = t5fob_ip();
 
 	$rule = t5fob_allowed_ip( $ip ) ? null : t5fob_find_rule( $phone, $device, $ip );
 	if ( ! $rule ) {
@@ -121,7 +136,8 @@ function t5fob_cart_items() {
 // message with the WhatsApp link instead of an order.
 add_action( 'woocommerce_store_api_checkout_update_order_from_request', function ( $order ) {
 	$device = t5fob_current_device();
-	$ip     = strtolower( (string) WC_Geolocation::get_ip_address() );
+	$ip     = t5fob_ip();
+	$order->update_meta_data( '_t5fob_ip', $ip );
 	$rule   = t5fob_allowed_ip( $ip ) ? null : t5fob_find_rule( t5fob_phone( $order->get_billing_phone() ), $device, $ip );
 	if ( ! $rule ) {
 		return;

@@ -21,7 +21,7 @@ function t5fob_order_values( $order ) {
 	return array(
 		'phone'  => t5fob_phone( $order->get_billing_phone() ),
 		'device' => t5fob_clean_device( $order->get_meta( '_t5fob_device' ) ),
-		'ip'     => strtolower( (string) $order->get_customer_ip_address() ),
+		'ip'     => strtolower( (string) ( $order->get_meta( '_t5fob_ip' ) ?: $order->get_customer_ip_address() ) ),
 	);
 }
 

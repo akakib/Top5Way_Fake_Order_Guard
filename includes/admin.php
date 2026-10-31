@@ -231,6 +231,8 @@ function t5fob_tab_settings() {
 		<p><label for="t5fob-allow"><strong>Never block these IPs</strong></label><br>
 			<textarea id="t5fob-allow" name="allow_ips" rows="3" class="regular-text" placeholder="203.0.113.*"><?php echo esc_textarea( $s['allow_ips'] ); ?></textarea><br>
 			<span class="t5fob-muted">Office and team connections, one per line. End with * for a whole range (203.0.113.*). Orders from these are never stopped.</span></p>
+		<p><label><input type="checkbox" name="behind_proxy" value="1" <?php checked( $s['behind_proxy'] ); ?>> <strong>This site is behind Cloudflare or another proxy</strong></label><br>
+			<span class="t5fob-muted">Tick this only if every blocked attempt shows the same IP. Leave it off otherwise, so nobody can fake their IP.</span></p>
 			<?php if ( defined( 'T5_TRACKING_VERSION' ) ) : ?>
 				<p class="t5fob-muted">Auto verify is handled by Top5Way Tracking: WooCommerce &gt; Top5Way Tracking &gt; Courier.</p>
 				<p><button class="button t5fob-btn-green">Save</button></p>
@@ -279,6 +281,7 @@ add_action( 'admin_post_t5fob_save_settings', function () {
 		'sf_key'    => sanitize_text_field( wp_unslash( $_POST['sf_key'] ?? '' ) ) ?: $old['sf_key'], // never printed back, so empty keeps it
 		'sf_secret' => sanitize_text_field( wp_unslash( $_POST['sf_secret'] ?? '' ) ) ?: $old['sf_secret'],
 		'allow_ips' => implode( "\n", array_filter( array_map( fn( $l ) => preg_replace( '/[^0-9a-fA-F:.*]/', '', $l ), preg_split( '/[\r\n,]+/', wp_unslash( $_POST['allow_ips'] ?? '' ) ) ) ) ),
+		'behind_proxy' => empty( $_POST['behind_proxy'] ) ? 0 : 1,
 		'auto_verify' => empty( $_POST['auto_verify'] ) ? 0 : 1,
 		'min_ratio'   => max( 0, min( 100, (int) ( $_POST['min_ratio'] ?? $old['min_ratio'] ) ) ),
 		'min_parcels' => max( 1, (int) ( $_POST['min_parcels'] ?? $old['min_parcels'] ) ),
@@ -319,6 +322,11 @@ add_action( 'admin_post_t5fob_attempt_order', function () {
 	global $wpdb;
 	$t  = t5fob_table( 'attempts' );
 	$id = absint( $_POST['id'] ?? 0 );
+	// A double click must not make two orders. MySQL frees this lock by itself if the request dies.
+	if ( ! $wpdb->get_var( $wpdb->prepare( 'SELECT GET_LOCK( %s, 0 )', $t . '_' . $id ) ) ) {
+		wp_safe_redirect( t5fob_page_url() );
+		exit;
+	}
 	$r  = $wpdb->get_row( $wpdb->prepare( "SELECT * FROM $t WHERE id = %d", $id ) );
 	if ( ! $r || $r->order_id || ! $r->cart ) {
 		wp_safe_redirect( t5fob_page_url() );
@@ -329,6 +337,7 @@ add_action( 'admin_post_t5fob_attempt_order', function () {
 		wp_die( esc_html( $order->get_error_message() ), '', array( 'back_link' => true ) );
 	}
 	$wpdb->update( $t, array( 'order_id' => $order->get_id(), 'wa_status' => 'came' ), array( 'id' => $id ) );
+	$wpdb->query( $wpdb->prepare( 'SELECT RELEASE_LOCK( %s )', $t . '_' . $id ) );
 	wp_safe_redirect( t5fob_order_url( $order->get_id() ) );
 	exit;
 } );

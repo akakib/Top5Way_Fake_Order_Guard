@@ -63,6 +63,7 @@ function t5fob_settings() {
 		'sf_key'     => '',
 		'sf_secret'  => '',
 		'allow_ips'   => '', // office / team: never blocked, never sent to WhatsApp
+		'behind_proxy' => 0, // the site sits behind Cloudflare or another proxy
 		'auto_verify' => 0,
 		'min_ratio'   => 60,
 		'min_parcels' => 2,
@@ -101,7 +102,8 @@ function t5fob_phone( $raw ) {
 	} elseif ( strlen( $d ) === 13 && 0 === strpos( $d, '88' ) ) {
 		$d = substr( $d, 2 );
 	}
-	return $d;
+	// The same mobile number with its leading 0 left out, or a 00 in front: 1700000000, 881700000000, 001700000000.
+	return preg_match( '/^(?:00)?(?:88)?0?(1\d{9})$/', $d, $m ) ? '0' . $m[1] : $d;
 }
 
 function t5fob_clean_device( $v ) {
@@ -183,9 +185,17 @@ function t5fob_add_rule( $type, $value, $days, $reason = '', $order_id = 0 ) {
 	return (int) $wpdb->insert_id;
 }
 
+const T5FOB_ATTEMPT_LIMIT = 10; // saved attempts per IP per hour
+
 /** Save one stopped checkout and count the hit on its rule. Returns the attempt code (BLK-1xxx). */
 function t5fob_log_attempt( $rule, $name, $phone, $address, array $items, $total, $ip, $device, array $cart = array() ) {
 	global $wpdb;
+	// A script repeating checkouts must not fill the table: past the limit it is still blocked, but not saved again.
+	$limit_key = 't5fob_lim_' . md5( $ip );
+	$seen      = get_transient( $limit_key );
+	if ( is_array( $seen ) && $seen['n'] >= T5FOB_ATTEMPT_LIMIT ) {
+		return t5fob_attempt_code( $seen['id'] );
+	}
 	$wpdb->query( $wpdb->prepare(
 		'UPDATE ' . t5fob_table( 'rules' ) . ' SET hits = hits + 1, last_hit_at = %s WHERE id = %d',
 		t5fob_now(), $rule->id
@@ -204,7 +214,9 @@ function t5fob_log_attempt( $rule, $name, $phone, $address, array $items, $total
 		'cart'       => $cart ? wp_json_encode( $cart ) : null,
 		'created_at' => t5fob_now(),
 	) );
-	return t5fob_attempt_code( $wpdb->insert_id );
+	$id = (int) $wpdb->insert_id;
+	set_transient( $limit_key, array( 'n' => ( $seen['n'] ?? 0 ) + 1, 'id' => $id ), HOUR_IN_SECONDS );
+	return t5fob_attempt_code( $id );
 }
 
 /** Daily tidy-up: attempts older than 180 days and rules that ended over 90 days ago. */
