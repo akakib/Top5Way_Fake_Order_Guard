@@ -23,3 +23,22 @@
 		return false;
 	});
 })(window.jQuery);
+
+// Block checkout: the refusal carries the same box. Show it above the form and open WhatsApp.
+(function (wp) {
+	if (!wp || !wp.apiFetch) { return; }
+	wp.apiFetch.use(function (options, next) {
+		return next(options).catch(function (err) {
+			var d = err && err.code === 't5fob_blocked' && err.data;
+			var form = d && d.t5fob_box && document.querySelector('.wc-block-checkout');
+			if (form) {
+				var old = document.querySelector('.t5fob-wa-box');
+				if (old) { old.remove(); }
+				form.insertAdjacentHTML('beforebegin', d.t5fob_box);
+				document.querySelector('.t5fob-wa-box').scrollIntoView({ block: 'center' });
+				window.location.href = d.t5fob_url;
+			}
+			throw err;
+		});
+	});
+})(window.wp);

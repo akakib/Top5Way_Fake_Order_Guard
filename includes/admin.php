@@ -52,7 +52,7 @@ function t5fob_render_page() {
 	}
 	echo '<div class="wrap t5fob-wrap"><h1>Fake Order Guard</h1>';
 	if ( ! t5fob_whatsapp_number() ) {
-		echo '<div class="notice notice-warning"><p>Add your WhatsApp number in <a href="' . esc_url( t5fob_page_url( array( 'tab' => 'settings' ) ) ) . '">Settings</a>. Until then blocked customers are sent to an empty WhatsApp link.</p></div>';
+		echo '<div class="notice notice-warning"><p>Add your WhatsApp number in <a href="' . esc_url( t5fob_page_url( array( 'tab' => 'settings' ) ) ) . '">Settings</a>. Until then blocked customers only see a message asking them to contact you.</p></div>';
 	}
 	if ( isset( $_GET['saved'] ) ) {
 		echo '<div class="notice notice-success is-dismissible"><p>Saved.</p></div>';
@@ -105,6 +105,15 @@ function t5fob_tab_attempts() {
 				</div>
 				<div class="t5fob-side">
 					<span class="t5fob-badge <?php echo esc_attr( $st[1] ); ?>"><?php echo esc_html( $st[0] ); ?></span>
+					<?php if ( $r->order_id ) : ?>
+						<a class="button" href="<?php echo esc_url( t5fob_order_url( $r->order_id ) ); ?>">Order #<?php echo (int) $r->order_id; ?></a>
+					<?php elseif ( $r->cart ) : ?>
+						<form method="post" action="<?php echo esc_url( admin_url( 'admin-post.php' ) ); ?>" class="t5fob-inline">
+							<input type="hidden" name="action" value="t5fob_attempt_order"><input type="hidden" name="id" value="<?php echo (int) $r->id; ?>">
+							<?php wp_nonce_field( 't5fob_attempt_order' ); ?>
+							<button class="button t5fob-btn-green">Create order</button>
+						</form>
+					<?php endif; ?>
 					<form method="post" action="<?php echo esc_url( admin_url( 'admin-post.php' ) ); ?>" class="t5fob-inline">
 						<input type="hidden" name="action" value="t5fob_attempt_status"><input type="hidden" name="id" value="<?php echo (int) $r->id; ?>">
 						<?php wp_nonce_field( 't5fob_attempt_status' ); ?>
@@ -211,6 +220,9 @@ function t5fob_tab_settings() {
 		<p><label for="t5fob-wa"><strong>WhatsApp number</strong></label><br>
 			<input id="t5fob-wa" type="text" name="wa_number" value="<?php echo esc_attr( $s['wa_number'] ); ?>" placeholder="01XXXXXXXXX"><br>
 			<span class="t5fob-muted">Blocked customers are sent to this WhatsApp with their order already typed.</span></p>
+		<p><label for="t5fob-wm"><strong>Message to blocked customers</strong></label><br>
+			<textarea id="t5fob-wm" name="wa_message" rows="3" class="regular-text" placeholder="Please confirm your order on WhatsApp."><?php echo esc_textarea( $s['wa_message'] ); ?></textarea><br>
+			<span class="t5fob-muted">Shown above the Open WhatsApp button. Leave empty for the standard message.</span></p>
 		<p><label for="t5fob-k"><strong>Steadfast API key</strong></label><br>
 			<input id="t5fob-k" type="password" name="sf_key" placeholder="<?php echo esc_attr( $sf_set( 'sf_key' ) ); ?>" autocomplete="off"></p>
 		<p><label for="t5fob-s"><strong>Steadfast secret key</strong></label><br>
@@ -263,6 +275,7 @@ add_action( 'admin_post_t5fob_save_settings', function () {
 	$old = t5fob_settings();
 	update_option( 't5fob_settings', array(
 		'wa_number' => preg_replace( '/[^\d+]/', '', wp_unslash( $_POST['wa_number'] ?? '' ) ),
+		'wa_message' => sanitize_textarea_field( wp_unslash( $_POST['wa_message'] ?? '' ) ),
 		'sf_key'    => sanitize_text_field( wp_unslash( $_POST['sf_key'] ?? '' ) ) ?: $old['sf_key'], // never printed back, so empty keeps it
 		'sf_secret' => sanitize_text_field( wp_unslash( $_POST['sf_secret'] ?? '' ) ) ?: $old['sf_secret'],
 		'allow_ips' => implode( "\n", array_filter( array_map( fn( $l ) => preg_replace( '/[^0-9a-fA-F:.*]/', '', $l ), preg_split( '/[\r\n,]+/', wp_unslash( $_POST['allow_ips'] ?? '' ) ) ) ) ),
@@ -296,6 +309,72 @@ add_action( 'admin_post_t5fob_attempt_status', function () {
 	wp_safe_redirect( wp_get_referer() ?: t5fob_page_url() );
 	exit;
 } );
+
+// The customer came on WhatsApp and is real: make the order they tried to place.
+add_action( 'admin_post_t5fob_attempt_order', function () {
+	check_admin_referer( 't5fob_attempt_order' );
+	if ( ! current_user_can( 'manage_woocommerce' ) ) {
+		wp_die( 'Not allowed.' );
+	}
+	global $wpdb;
+	$t  = t5fob_table( 'attempts' );
+	$id = absint( $_POST['id'] ?? 0 );
+	$r  = $wpdb->get_row( $wpdb->prepare( "SELECT * FROM $t WHERE id = %d", $id ) );
+	if ( ! $r || $r->order_id || ! $r->cart ) {
+		wp_safe_redirect( t5fob_page_url() );
+		exit;
+	}
+	$order = t5fob_order_from_attempt( $r );
+	if ( is_wp_error( $order ) ) {
+		wp_die( esc_html( $order->get_error_message() ), '', array( 'back_link' => true ) );
+	}
+	$wpdb->update( $t, array( 'order_id' => $order->get_id(), 'wa_status' => 'came' ), array( 'id' => $id ) );
+	wp_safe_redirect( t5fob_order_url( $order->get_id() ) );
+	exit;
+} );
+
+/** Prices stay as they were at checkout. The address arrives as one line, so check it on the order. */
+function t5fob_order_from_attempt( $r ) {
+	$cart     = json_decode( $r->cart, true );
+	$products = array();
+	foreach ( (array) ( $cart['lines'] ?? array() ) as $line ) {
+		$product = wc_get_product( $line['id'] );
+		if ( ! $product ) {
+			return new WP_Error( 't5fob_product', 'A product from this attempt no longer exists, so the order was not created. Create it by hand.' );
+		}
+		$products[] = array( $product, $line );
+	}
+	$order = wc_create_order( array( 'created_via' => 't5fob' ) );
+	if ( is_wp_error( $order ) ) {
+		return $order;
+	}
+	foreach ( $products as list( $product, $line ) ) {
+		$order->add_product( $product, $line['qty'], array( 'subtotal' => $line['subtotal'], 'total' => $line['total'] ) );
+	}
+	if ( ! empty( $cart['shipping']['label'] ) ) {
+		$ship = new WC_Order_Item_Shipping();
+		$ship->set_method_title( $cart['shipping']['label'] );
+		$ship->set_total( $cart['shipping']['cost'] );
+		$order->add_item( $ship );
+	}
+	$order->set_billing_first_name( $r->name );
+	$order->set_billing_phone( $r->phone );
+	$order->set_billing_address_1( $r->address );
+	$order->set_billing_country( WC()->countries->get_base_country() );
+	$order->set_shipping_first_name( $r->name );
+	$order->set_shipping_address_1( $r->address );
+	$order->set_shipping_country( WC()->countries->get_base_country() );
+	$gateways = WC()->payment_gateways()->payment_gateways();
+	if ( ! empty( $cart['payment'] ) && isset( $gateways[ $cart['payment'] ] ) ) {
+		$order->set_payment_method( $gateways[ $cart['payment'] ] );
+	}
+	if ( $r->device ) {
+		$order->update_meta_data( '_t5fob_device', $r->device );
+	}
+	$order->calculate_totals( false );
+	$order->update_status( 'on-hold', 'Created from blocked attempt ' . t5fob_attempt_code( $r->id ) . ' after the customer came on WhatsApp.' );
+	return $order;
+}
 
 function t5fob_order_url( $order_id ) {
 	if ( class_exists( '\Automattic\WooCommerce\Utilities\OrderUtil' ) ) {

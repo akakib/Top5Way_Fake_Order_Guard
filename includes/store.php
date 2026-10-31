@@ -45,6 +45,8 @@ function t5fob_install() {
 		device varchar(64) NOT NULL DEFAULT '',
 		ua varchar(255) NOT NULL DEFAULT '',
 		wa_status varchar(12) NOT NULL DEFAULT 'unchecked',
+		cart text NULL,
+		order_id bigint(20) unsigned NOT NULL DEFAULT 0,
 		created_at datetime NOT NULL,
 		PRIMARY KEY  (id),
 		KEY phone (phone),
@@ -57,6 +59,7 @@ function t5fob_install() {
 function t5fob_settings() {
 	return wp_parse_args( get_option( 't5fob_settings', array() ), array(
 		'wa_number'  => '',
+		'wa_message' => '',
 		'sf_key'     => '',
 		'sf_secret'  => '',
 		'allow_ips'   => '', // office / team: never blocked, never sent to WhatsApp
@@ -181,7 +184,7 @@ function t5fob_add_rule( $type, $value, $days, $reason = '', $order_id = 0 ) {
 }
 
 /** Save one stopped checkout and count the hit on its rule. Returns the attempt code (BLK-1xxx). */
-function t5fob_log_attempt( $rule, $name, $phone, $address, array $items, $total, $ip, $device ) {
+function t5fob_log_attempt( $rule, $name, $phone, $address, array $items, $total, $ip, $device, array $cart = array() ) {
 	global $wpdb;
 	$wpdb->query( $wpdb->prepare(
 		'UPDATE ' . t5fob_table( 'rules' ) . ' SET hits = hits + 1, last_hit_at = %s WHERE id = %d',
@@ -198,6 +201,7 @@ function t5fob_log_attempt( $rule, $name, $phone, $address, array $items, $total
 		'ip'         => $ip,
 		'device'     => $device,
 		'ua'         => mb_substr( sanitize_text_field( wp_unslash( $_SERVER['HTTP_USER_AGENT'] ?? '' ) ), 0, 250 ),
+		'cart'       => $cart ? wp_json_encode( $cart ) : null,
 		'created_at' => t5fob_now(),
 	) );
 	return t5fob_attempt_code( $wpdb->insert_id );

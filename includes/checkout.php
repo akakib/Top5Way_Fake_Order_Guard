@@ -8,7 +8,8 @@ defined( 'ABSPATH' ) || exit;
 // Device id: a random id kept in a cookie (and localStorage, so clearing cookies alone does not reset it).
 add_action( 'wp_enqueue_scripts', function () {
 	if ( function_exists( 'is_checkout' ) && is_checkout() && ! is_order_received_page() ) {
-		wp_enqueue_script( 't5fob-device', T5FOB_URL . 'assets/device.js', array( 'jquery' ), T5FOB_VERSION . '.2', true );
+		$deps = has_block( 'woocommerce/checkout' ) ? array( 'jquery', 'wp-api-fetch' ) : array( 'jquery' );
+		wp_enqueue_script( 't5fob-device', T5FOB_URL . 'assets/device.js', $deps, T5FOB_VERSION, true );
 	}
 } );
 
@@ -54,7 +55,13 @@ function t5fob_check_checkout( $data, $errors ) {
 	$name    = trim( ( $data['billing_first_name'] ?? '' ) . ' ' . ( $data['billing_last_name'] ?? '' ) );
 	$address = trim( implode( ', ', array_filter( array( $data['billing_address_1'] ?? '', $data['billing_address_2'] ?? '', $data['billing_city'] ?? '' ) ) ) );
 	$total   = (float) WC()->cart->get_total( 'edit' );
-	$code    = t5fob_log_attempt( $rule, $name, $data['billing_phone'] ?? '', $address, $items, $total, $ip, $device );
+	$code    = t5fob_log_attempt( $rule, $name, $data['billing_phone'] ?? '', $address, $items, $total, $ip, $device, t5fob_cart_snapshot( $data['payment_method'] ?? '' ) );
+
+	// No WhatsApp number to send them to: still no order, and a plain message instead of an empty link.
+	if ( ! t5fob_whatsapp_number() ) {
+		$errors->add( 't5fob_blocked', T5FOB_NO_WHATSAPP );
+		return;
+	}
 
 	$url = t5fob_whatsapp_url( $code, $name, $address, $data['billing_phone'] ?? '', $items, t5fob_shipping_label(), $total );
 
@@ -63,13 +70,41 @@ function t5fob_check_checkout( $data, $errors ) {
 		// device.js sees "t5fob", opens WhatsApp and cancels WooCommerce's redirect. WooCommerce then shows
 		// "messages" with its own error handler, which also stops the loading spinner.
 		// Without device.js, "redirect" still sends the customer to WhatsApp.
-		$box = '<div class="t5fob-wa-box" role="alert" style="margin:0 0 16px;padding:14px 16px;border:1px solid #25d366;border-radius:10px;background:#f0fbf4;color:#1d2320;font-size:15px;line-height:1.5">'
-			. '<strong>Please confirm your order on WhatsApp.</strong><br>Tap Send in WhatsApp and our team will reply.'
-			. '<a href="' . esc_url( $url ) . '" target="_blank" rel="noopener" style="display:block;margin-top:10px;padding:12px;border-radius:8px;background:#25d366;color:#fff;text-align:center;font-weight:600;text-decoration:none">Open WhatsApp</a></div>';
-		wp_send_json( array( 'result' => 'success', 'redirect' => $url, 't5fob' => 1, 'messages' => $box ) );
+		wp_send_json( array( 'result' => 'success', 'redirect' => $url, 't5fob' => 1, 'messages' => t5fob_whatsapp_box( $url ) ) );
 	}
 	wp_redirect( $url ); // phpcs:ignore WordPress.Security.SafeRedirect -- external WhatsApp link on purpose.
 	exit;
+}
+
+const T5FOB_NO_WHATSAPP = 'We could not place this order online. Please contact us to order.';
+
+function t5fob_whatsapp_message() {
+	return t5fob_settings()['wa_message'] ?: "Please confirm your order on WhatsApp.\nTap Send in WhatsApp and our team will reply.";
+}
+
+function t5fob_whatsapp_box( $url ) {
+	return '<div class="t5fob-wa-box" role="alert" style="margin:0 0 16px;padding:14px 16px;border:1px solid #25d366;border-radius:10px;background:#f0fbf4;color:#1d2320;font-size:15px;line-height:1.5">'
+		. nl2br( esc_html( t5fob_whatsapp_message() ) )
+		. '<a href="' . esc_url( $url ) . '" target="_blank" rel="noopener" style="display:block;margin-top:10px;padding:12px;border-radius:8px;background:#25d366;color:#fff;text-align:center;font-weight:600;text-decoration:none">Open WhatsApp</a></div>';
+}
+
+/** What the customer had in the cart, kept with the attempt so staff can turn it into an order later. */
+function t5fob_cart_snapshot( $payment ) {
+	$cart  = WC()->cart;
+	$lines = array();
+	foreach ( $cart->get_cart() as $line ) {
+		$lines[] = array(
+			'id'       => (int) ( $line['variation_id'] ?: $line['product_id'] ),
+			'qty'      => (int) $line['quantity'],
+			'subtotal' => (float) $line['line_subtotal'],
+			'total'    => (float) $line['line_total'],
+		);
+	}
+	return array(
+		'lines'    => $lines,
+		'shipping' => array( 'label' => t5fob_shipping_label(), 'cost' => (float) $cart->get_shipping_total() ),
+		'payment'  => sanitize_key( $payment ),
+	);
 }
 
 function t5fob_cart_items() {
@@ -95,9 +130,13 @@ add_action( 'woocommerce_store_api_checkout_update_order_from_request', function
 	$name    = trim( $order->get_billing_first_name() . ' ' . $order->get_billing_last_name() );
 	$address = trim( implode( ', ', array_filter( array( $order->get_billing_address_1(), $order->get_billing_address_2(), $order->get_billing_city() ) ) ) );
 	$total   = (float) WC()->cart->get_total( 'edit' );
-	$code    = t5fob_log_attempt( $rule, $name, $order->get_billing_phone(), $address, $items, $total, $ip, $device );
-	$url     = t5fob_whatsapp_url( $code, $name, $address, $order->get_billing_phone(), $items, t5fob_shipping_label(), $total );
-	throw new \Automattic\WooCommerce\StoreApi\Exceptions\RouteException( 't5fob_blocked', 'Please confirm your order on WhatsApp: ' . $url, 400 ); // phpcs:ignore
+	$code    = t5fob_log_attempt( $rule, $name, $order->get_billing_phone(), $address, $items, $total, $ip, $device, t5fob_cart_snapshot( $order->get_payment_method() ) );
+	if ( ! t5fob_whatsapp_number() ) {
+		throw new \Automattic\WooCommerce\StoreApi\Exceptions\RouteException( 't5fob_blocked', T5FOB_NO_WHATSAPP, 400 ); // phpcs:ignore
+	}
+	$url = t5fob_whatsapp_url( $code, $name, $address, $order->get_billing_phone(), $items, t5fob_shipping_label(), $total );
+	// Plain text with the number, in case the button below cannot be added; device.js adds it from the extra data.
+	throw new \Automattic\WooCommerce\StoreApi\Exceptions\RouteException( 't5fob_blocked', preg_replace( '/\s+/', ' ', t5fob_whatsapp_message() ) . ' WhatsApp: +' . t5fob_whatsapp_number(), 400, array( 't5fob_url' => $url, 't5fob_box' => t5fob_whatsapp_box( $url ) ) ); // phpcs:ignore
 } );
 
 function t5fob_shipping_label() {
