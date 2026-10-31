@@ -1,0 +1,59 @@
+.t5fob-wrap { max-width: 1000px; }
+.t5fob-muted { color: #6b746f; font-size: 12.5px; }
+.t5fob-subnav { display: flex; gap: 22px; border-bottom: 1px solid #dcdcde; margin: 14px 0 16px; }
+.t5fob-subnav a { padding: 8px 0; text-decoration: none; color: #50575e; border-bottom: 2px solid transparent; margin-bottom: -1px; font-size: 14px; }
+.t5fob-subnav a.on { color: #1c5b3a; border-color: #1c5b3a; font-weight: 600; }
+.t5fob-subnav a:focus { box-shadow: none; outline: 2px solid #1c5b3a; }
+
+.button.t5fob-btn-green, .button.t5fob-btn-green:hover { background: #1c5b3a; border-color: #1c5b3a; color: #fff; }
+.button.t5fob-btn-red, .button.t5fob-btn-red:hover { background: #c0392b; border-color: #c0392b; color: #fff; }
+
+.t5fob-tools { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin-bottom: 12px; }
+.t5fob-tools input[type=search] { flex: 1; min-width: 220px; }
+.t5fob-pills, .t5fob-seg { display: inline-flex; flex-wrap: wrap; gap: 6px; }
+.t5fob-pills input, .t5fob-seg input { position: absolute; opacity: 0; }
+.t5fob-pills span, .t5fob-seg span { display: inline-block; border: 1px solid #c3c4c7; border-radius: 999px; padding: 4px 12px; background: #fff; cursor: pointer; font-size: 13px; }
+.t5fob-pills input:checked + span, .t5fob-seg input:checked + span { background: #1c5b3a; border-color: #1c5b3a; color: #fff; }
+.t5fob-pills input:focus-visible + span, .t5fob-seg input:focus-visible + span { outline: 2px solid #1c5b3a; outline-offset: 2px; }
+
+.t5fob-list { display: flex; flex-direction: column; gap: 10px; }
+.t5fob-item { display: flex; justify-content: space-between; gap: 12px; background: #fff; border: 1px solid #dcdcde; border-radius: 10px; padding: 12px 14px; }
+.t5fob-main { min-width: 0; display: flex; flex-direction: column; gap: 3px; }
+.t5fob-side { display: flex; flex-direction: column; align-items: flex-end; gap: 6px; flex: none; }
+.t5fob-inline { display: flex; gap: 6px; }
+.t5fob-empty { background: #fff; border: 1px dashed #c3c4c7; border-radius: 10px; padding: 18px; color: #50575e; }
+.t5fob-pages { margin-top: 14px; }
+.t5fob-pages .page-numbers { padding: 4px 9px; border: 1px solid #c3c4c7; border-radius: 6px; text-decoration: none; background: #fff; }
+.t5fob-pages .current { background: #1c5b3a; color: #fff; border-color: #1c5b3a; }
+
+.t5fob-badge { display: inline-block; font-size: 12px; border-radius: 999px; padding: 2px 9px; background: #f0f0f1; color: #50575e; font-weight: 500; white-space: nowrap; }
+.t5fob-badge.ok { background: #e8f2ec; color: #1c5b3a; }
+.t5fob-badge.warn { background: #fff4d6; color: #8a5d00; }
+.t5fob-badge.bad { background: #fdecea; color: #b0281a; }
+
+.t5fob-add { margin-bottom: 14px; }
+.t5fob-add summary { list-style: none; display: inline-block; }
+.t5fob-add summary::-webkit-details-marker { display: none; }
+.t5fob-add form { margin-top: 10px; background: #fff; border: 1px solid #dcdcde; border-radius: 10px; padding: 14px; display: flex; flex-direction: column; gap: 10px; max-width: 460px; }
+.t5fob-settings input[type=text], .t5fob-settings input[type=password] { width: 100%; max-width: 360px; }
+
+/* Order screen box */
+.t5fob-box .t5fob-row { display: flex; justify-content: space-between; gap: 8px; padding: 5px 0; border-bottom: 1px solid #f0f0f1; font-size: 13px; }
+.t5fob-box .t5fob-row > span:first-child { color: #6b746f; }
+.t5fob-box p { margin: 12px 0 0; }
+
+.t5fob-modal-bg { position: fixed; inset: 0; background: rgba(0,0,0,.45); z-index: 100000; display: flex; align-items: center; justify-content: center; padding: 16px; }
+.t5fob-modal-bg[hidden] { display: none; }
+.t5fob-modal { background: #fff; border-radius: 14px; max-width: 440px; width: 100%; padding: 18px 20px; max-height: 92vh; overflow: auto; }
+.t5fob-modal h3 { margin: 0 0 2px; font-size: 17px; }
+.t5fob-chk { display: flex; gap: 10px; align-items: flex-start; padding: 9px 0; border-bottom: 1px solid #f0f0f1; }
+.t5fob-chk input { margin-top: 3px; }
+.t5fob-chk small { display: block; color: #6b746f; }
+.t5fob-modal textarea { width: 100%; margin-top: 8px; }
+.t5fob-actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 12px; }
+
+@media (max-width: 600px) {
+	.t5fob-item { flex-direction: column; }
+	.t5fob-side { align-items: flex-start; }
+	.t5fob-tools input[type=search] { min-width: 0; flex: 1 1 100%; }
+}
