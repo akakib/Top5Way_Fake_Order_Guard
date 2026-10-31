@@ -91,11 +91,9 @@ function t5fob_settings() {
 		'repeat_mins'   => 3,
 		'repeat_device' => 2, // different numbers on one device
 		'repeat_ip'     => 3, // orders from one IP
-		'auto_verify' => 0,
 		'min_ratio'   => 60,
 		'min_parcels' => 2,
 		'max_reports' => 2,
-		'max_total'   => 0, // bigger orders always get a call; 0 = no limit
 	) );
 }
 

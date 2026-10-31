@@ -1,7 +1,7 @@
 === Top5Way Fake Order Guard ===
 Contributors: top5way
 Requires Plugins: woocommerce
-Stable tag: 1.3.0
+Stable tag: 1.4.0
 
 Stops fake orders on WooCommerce before they are placed. A blocked customer goes to your WhatsApp with the order already typed.
 
@@ -13,7 +13,6 @@ Stops fake orders on WooCommerce before they are placed. A blocked customer goes
 * Create order: when a blocked customer proves real on WhatsApp, one button makes the order from their attempt.
 * Repeat orders: the same phone, device or IP ordering again and again goes to WhatsApp instead. The limits are in Settings.
 * Allow list, so your office connection is never blocked.
-* Auto verify by Steadfast record, unless Top5Way Tracking is active: then Tracking does it.
 
 == Setup ==
 1. Install and activate. WooCommerce must be active.

@@ -247,33 +247,14 @@ function t5fob_tab_settings() {
 			<input id="t5fob-rv" type="number" name="repeat_device" min="1" value="<?php echo esc_attr( $s['repeat_device'] ); ?>"></p>
 		<p><label for="t5fob-ri"><strong>One IP: orders allowed in the short time</strong></label><br>
 			<input id="t5fob-ri" type="number" name="repeat_ip" min="1" value="<?php echo esc_attr( $s['repeat_ip'] ); ?>"></p>
-			<?php if ( defined( 'T5_TRACKING_VERSION' ) ) : ?>
-				<p class="t5fob-muted">Auto verify is handled by Top5Way Tracking: WooCommerce &gt; Top5Way Tracking &gt; Courier.</p>
-				<p><button class="button t5fob-btn-green">Save</button></p>
-		</form>
-				<?php
-				return;
-			elseif ( ! wc_is_order_status( 'wc-record-verified' ) ) :
-				?>
-				<p class="t5fob-muted">Auto verify needs a Record Verified order status. Top5Way Tracking adds it.</p>
-				<p><button class="button t5fob-btn-green">Save</button></p>
-		</form>
-				<?php
-				return;
-			endif;
-			?>
-			<h2>Auto Record Verified</h2>
-		<p><label><input type="checkbox" name="auto_verify" value="1" <?php checked( $s['auto_verify'] ); ?>> <strong>Move good-history orders to Record Verified on their own</strong></label><br>
-			<span class="t5fob-muted">Checked on Steadfast right after the order is placed. Orders that do not pass stay as they are for a phone call.</span></p>
-		<p><label for="t5fob-r"><strong>Minimum delivery success (%)</strong></label><br>
-			<input id="t5fob-r" type="number" name="min_ratio" min="0" max="100" value="<?php echo esc_attr( $s['min_ratio'] ); ?>"></p>
-		<p><label for="t5fob-n"><strong>Minimum past parcels</strong></label><br>
-			<input id="t5fob-n" type="number" name="min_parcels" min="1" value="<?php echo esc_attr( $s['min_parcels'] ); ?>"></p>
-		<p><label for="t5fob-f"><strong>Maximum fraud reports</strong></label><br>
-			<input id="t5fob-f" type="number" name="max_reports" min="0" value="<?php echo esc_attr( $s['max_reports'] ); ?>"></p>
-		<p><label for="t5fob-t"><strong>Always call orders above this total</strong></label><br>
-			<input id="t5fob-t" type="number" name="max_total" min="0" value="<?php echo esc_attr( $s['max_total'] ); ?>"><br>
-			<span class="t5fob-muted">0 means no limit.</span></p>
+		<?php if ( ! defined( 'T5_TRACKING_VERSION' ) ) : ?>
+			<p><label for="t5fob-r"><strong>Good record: minimum delivery success (%)</strong></label><br>
+				<input id="t5fob-r" type="number" name="min_ratio" min="0" max="100" value="<?php echo esc_attr( $s['min_ratio'] ); ?>"></p>
+			<p><label for="t5fob-n"><strong>Good record: minimum past parcels</strong></label><br>
+				<input id="t5fob-n" type="number" name="min_parcels" min="1" value="<?php echo esc_attr( $s['min_parcels'] ); ?>"></p>
+			<p><label for="t5fob-f"><strong>Good record: maximum fraud reports</strong></label><br>
+				<input id="t5fob-f" type="number" name="max_reports" min="0" value="<?php echo esc_attr( $s['max_reports'] ); ?>"></p>
+		<?php endif; ?>
 		<p><button class="button t5fob-btn-green">Save</button></p>
 	</form>
 	<?php
@@ -307,11 +288,9 @@ add_action( 'admin_post_t5fob_save_settings', function () {
 		'repeat_mins'  => max( 1, (int) ( $_POST['repeat_mins'] ?? $old['repeat_mins'] ) ),
 		'repeat_device' => max( 1, (int) ( $_POST['repeat_device'] ?? $old['repeat_device'] ) ),
 		'repeat_ip'    => max( 1, (int) ( $_POST['repeat_ip'] ?? $old['repeat_ip'] ) ),
-		'auto_verify' => empty( $_POST['auto_verify'] ) ? 0 : 1,
 		'min_ratio'   => max( 0, min( 100, (int) ( $_POST['min_ratio'] ?? $old['min_ratio'] ) ) ),
 		'min_parcels' => max( 1, (int) ( $_POST['min_parcels'] ?? $old['min_parcels'] ) ),
 		'max_reports' => max( 0, (int) ( $_POST['max_reports'] ?? $old['max_reports'] ) ),
-		'max_total'   => max( 0, (int) ( $_POST['max_total'] ?? $old['max_total'] ) ),
 	) + $limits, false );
 	wp_safe_redirect( t5fob_page_url( array( 'tab' => 'settings', 'saved' => 1 ) ) );
 	exit;

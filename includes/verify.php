@@ -1,7 +1,7 @@
 <?php
 /**
- * Auto Record Verified: checks each new order's phone on Steadfast after checkout and moves
- * good-history orders to Record Verified. Also the Score column on the orders list.
+ * The Steadfast record of each new order, and the repeat-order check that reads it.
+ * Moving orders to Record Verified belongs to Top5Way Tracking, not here.
  */
 
 defined( 'ABSPATH' ) || exit;
@@ -53,50 +53,22 @@ function t5fob_score_order( $order ) {
 	return $sf;
 }
 
-/** Why an order does not pass the rule, or '' when it passes. */
-function t5fob_verify_fail_reason( $sf, $total ) {
+/** Does a record meet the minimums in Settings? */
+function t5fob_record_passes( $sf ) {
 	$s = t5fob_settings();
 	list( $parcels, $ratio ) = t5fob_sf_numbers( $sf );
-	if ( $s['max_total'] > 0 && $total > $s['max_total'] ) {
-		return 'Order total is above ' . number_format( $s['max_total'] ) . ', call to confirm.';
-	}
-	if ( $parcels < $s['min_parcels'] ) {
-		return 'Fewer than ' . $s['min_parcels'] . ' past parcels, call to confirm.';
-	}
-	if ( $ratio < $s['min_ratio'] ) {
-		return 'Delivery below ' . $s['min_ratio'] . '%, call to confirm.';
-	}
-	if ( $sf['reports'] > $s['max_reports'] ) {
-		return 'More than ' . $s['max_reports'] . ' reports, call to confirm.';
-	}
-	return '';
+	return $parcels >= $s['min_parcels'] && $ratio >= $s['min_ratio'] && $sf['reports'] <= $s['max_reports'];
 }
 
-function t5fob_auto_verify( $order_id ) {
+/** One Steadfast request per order, kept on the order. Never changes its status. */
+function t5fob_fetch_score( $order_id ) {
 	$order = wc_get_order( $order_id );
 	if ( ! $order || $order->get_meta( '_t5fob_checked' ) ) {
 		return;
 	}
 	$order->update_meta_data( '_t5fob_checked', time() );
-	$sf = t5fob_score_order( $order );
-	if ( ! t5fob_settings()['auto_verify'] || ! wc_is_order_status( 'wc-record-verified' ) || ! $order->has_status( array( 'on-hold', 'processing', 'pending' ) ) ) {
-		$order->save();
-		return;
-	}
-	if ( null === $sf ) {
-		$order->add_order_note( 'Steadfast record not available. Call to confirm.' );
-		$order->save();
-		return;
-	}
-	list( $parcels, $ratio ) = t5fob_sf_numbers( $sf );
-	$line   = sprintf( 'Steadfast: %s%% delivered of %s parcels, %d reports.', round( $ratio ), $sf['volume'] ?: $parcels, $sf['reports'] );
-	$reason = t5fob_verify_fail_reason( $sf, (float) $order->get_total() );
-	if ( '' === $reason ) {
-		$order->update_status( 'record-verified', $line . ' Auto Record Verified.' );
-	} else {
-		$order->add_order_note( $line . ' ' . $reason );
-		$order->save();
-	}
+	t5fob_score_order( $order );
+	$order->save();
 }
 
 /** Can this site get a Steadfast record at all? Without one, only the counts apply. */
@@ -123,7 +95,7 @@ function t5fob_record_type( $order_id ) {
 	if ( ! is_array( $sf ) || ( $tracking && ! is_array( $score ) ) ) {
 		return 'none';
 	}
-	if ( $tracking ? t5_score_passes( $score ) : '' === t5fob_verify_fail_reason( $sf, 0 ) ) {
+	if ( $tracking ? t5_score_passes( $score ) : t5fob_record_passes( $sf ) ) {
 		return 'good';
 	}
 	$s = t5fob_settings();
@@ -208,7 +180,7 @@ add_action( 'woocommerce_store_api_checkout_order_processed', 't5fob_remember_or
 // Runs after the customer already has the thank-you page, so checkout never waits for Steadfast.
 function t5fob_queue_verify( $order ) {
 	if ( defined( 'T5_TRACKING_VERSION' ) ) {
-		return; // Top5Way Tracking checks the score and verifies the order
+		return; // Top5Way Tracking asks Steadfast
 	}
 	$order_id = is_object( $order ) ? $order->get_id() : (int) $order;
 	add_action( 'shutdown', function () use ( $order_id ) {
@@ -217,7 +189,7 @@ function t5fob_queue_verify( $order ) {
 		} elseif ( function_exists( 'fastcgi_finish_request' ) ) {
 			fastcgi_finish_request();
 		}
-		t5fob_auto_verify( $order_id );
+		t5fob_fetch_score( $order_id );
 	} );
 }
 add_action( 'woocommerce_checkout_order_processed', 't5fob_queue_verify', 50 );
