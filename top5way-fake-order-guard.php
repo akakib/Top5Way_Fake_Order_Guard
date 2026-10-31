@@ -3,7 +3,7 @@
  * Plugin Name: Top5Way Fake Order Guard
  * Plugin URI: https://top5way.com
  * Description: Stops orders from blocked phones, devices and IPs. A blocked customer is sent to your WhatsApp with the order already typed, so you see their real number.
- * Version: 1.1.1
+ * Version: 1.1.2
  * Author: Top5Way Team
  * Author URI: https://top5way.com
  * Requires PHP: 7.4
@@ -21,7 +21,7 @@ if ( defined( 'T5FOB_VERSION' ) ) {
 	return;
 }
 
-define( 'T5FOB_VERSION', '1.1.1' );
+define( 'T5FOB_VERSION', '1.1.2' );
 define( 'T5FOB_DB_VERSION', '3' );
 define( 'T5FOB_FILE', __FILE__ );
 define( 'T5FOB_DIR', plugin_dir_path( __FILE__ ) );

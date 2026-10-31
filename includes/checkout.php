@@ -70,7 +70,7 @@ function t5fob_check_checkout( $data, $errors ) {
 	$name    = trim( ( $data['billing_first_name'] ?? '' ) . ' ' . ( $data['billing_last_name'] ?? '' ) );
 	$address = trim( implode( ', ', array_filter( array( $data['billing_address_1'] ?? '', $data['billing_address_2'] ?? '', $data['billing_city'] ?? '' ) ) ) );
 	$total   = (float) WC()->cart->get_total( 'edit' );
-	$code    = t5fob_log_attempt( $rule, $name, $data['billing_phone'] ?? '', $address, $items, $total, $ip, $device, t5fob_cart_snapshot( $data['payment_method'] ?? '' ) );
+	t5fob_log_attempt( $rule, $name, $data['billing_phone'] ?? '', $address, $items, $total, $ip, $device, t5fob_cart_snapshot( $data['payment_method'] ?? '' ) );
 
 	// No WhatsApp number to send them to: still no order, and a plain message instead of an empty link.
 	if ( ! t5fob_whatsapp_number() ) {
@@ -78,7 +78,7 @@ function t5fob_check_checkout( $data, $errors ) {
 		return;
 	}
 
-	$url = t5fob_whatsapp_url( $code, $name, $address, $data['billing_phone'] ?? '', $items, t5fob_shipping_label(), $total );
+	$url = t5fob_whatsapp_url( $name, $address, $data['billing_phone'] ?? '', $items, t5fob_shipping_label(), $total );
 
 	// Classic checkout submits by AJAX and follows "redirect" on success.
 	if ( wp_doing_ajax() ) {
@@ -146,11 +146,11 @@ add_action( 'woocommerce_store_api_checkout_update_order_from_request', function
 	$name    = trim( $order->get_billing_first_name() . ' ' . $order->get_billing_last_name() );
 	$address = trim( implode( ', ', array_filter( array( $order->get_billing_address_1(), $order->get_billing_address_2(), $order->get_billing_city() ) ) ) );
 	$total   = (float) WC()->cart->get_total( 'edit' );
-	$code    = t5fob_log_attempt( $rule, $name, $order->get_billing_phone(), $address, $items, $total, $ip, $device, t5fob_cart_snapshot( $order->get_payment_method() ) );
+	t5fob_log_attempt( $rule, $name, $order->get_billing_phone(), $address, $items, $total, $ip, $device, t5fob_cart_snapshot( $order->get_payment_method() ) );
 	if ( ! t5fob_whatsapp_number() ) {
 		throw new \Automattic\WooCommerce\StoreApi\Exceptions\RouteException( 't5fob_blocked', T5FOB_NO_WHATSAPP, 400 ); // phpcs:ignore
 	}
-	$url = t5fob_whatsapp_url( $code, $name, $address, $order->get_billing_phone(), $items, t5fob_shipping_label(), $total );
+	$url = t5fob_whatsapp_url( $name, $address, $order->get_billing_phone(), $items, t5fob_shipping_label(), $total );
 	// Plain text with the number, in case the button below cannot be added; device.js adds it from the extra data.
 	throw new \Automattic\WooCommerce\StoreApi\Exceptions\RouteException( 't5fob_blocked', preg_replace( '/\s+/', ' ', t5fob_whatsapp_message() ) . ' WhatsApp: +' . t5fob_whatsapp_number(), 400, array( 't5fob_url' => $url, 't5fob_box' => t5fob_whatsapp_box( $url ) ) ); // phpcs:ignore
 } );
@@ -174,10 +174,9 @@ function t5fob_whatsapp_number() {
 	return $n;
 }
 
-function t5fob_whatsapp_url( $code, $name, $address, $phone, $items, $shipping, $total ) {
+function t5fob_whatsapp_url( $name, $address, $phone, $items, $shipping, $total ) {
 	$lines = array(
-		$code,
-		'Order Now',
+		'Please confirm my order:',
 		'Name: ' . $name,
 		'Address: ' . $address,
 		'Phone: ' . $phone,
