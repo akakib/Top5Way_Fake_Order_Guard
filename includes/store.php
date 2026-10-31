@@ -80,10 +80,17 @@ function t5fob_settings() {
 		'allow_ips'   => '', // office / team: never blocked, never sent to WhatsApp
 		'behind_proxy' => 0, // the site sits behind Cloudflare or another proxy
 		'repeat_on'    => 1,
-		'repeat_mins'  => 3,
-		'repeat_short' => 2, // orders from one phone in those minutes, good record
-		'repeat_day'   => 3, // orders from one phone in 24 hours, good record
-		'repeat_ip'    => 3, // orders from one IP in those minutes
+		// One phone: orders at once, then hours until one more. The table keeps 48 hours, so at once x hours stays within that.
+		'repeat_good_c' => 3,
+		'repeat_good_h' => 6,
+		'repeat_none_c' => 2,
+		'repeat_none_h' => 12,
+		'repeat_bad_c'  => 1,
+		'repeat_bad_h'  => 24,
+		// Device and IP only catch a burst, in this many minutes.
+		'repeat_mins'   => 3,
+		'repeat_device' => 2, // different numbers on one device
+		'repeat_ip'     => 3, // orders from one IP
 		'auto_verify' => 0,
 		'min_ratio'   => 60,
 		'min_parcels' => 2,

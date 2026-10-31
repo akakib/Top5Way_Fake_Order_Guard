@@ -108,23 +108,35 @@ function t5fob_can_score() {
 	return (bool) ( $s['sf_key'] ?: get_option( 'api_settings_tab_api_key' ) );
 }
 
-/** Reads the record saved on an earlier order: never asks Steadfast, and Tracking's own rules decide when it is active. */
-function t5fob_record_good( $order_id ) {
-	$order = wc_get_order( $order_id );
-	if ( ! $order ) {
-		return false;
+/**
+ * good, none or bad, from the record saved on an earlier order. Never asks Steadfast.
+ * Too few parcels to judge counts as none: a new customer is not a bad one.
+ */
+function t5fob_record_type( $order_id ) {
+	if ( ! t5fob_can_score() ) {
+		return 'good';
 	}
-	if ( defined( 'T5_TRACKING_VERSION' ) ) {
-		$score = $order->get_meta( '_t5_sf_score' );
-		return is_array( $score ) && t5_score_passes( $score );
+	$order    = wc_get_order( $order_id );
+	$tracking = defined( 'T5_TRACKING_VERSION' );
+	$score    = $order && $tracking ? $order->get_meta( '_t5_sf_score' ) : null;
+	$sf       = $order ? t5fob_saved_score( $order ) : null;
+	if ( ! is_array( $sf ) || ( $tracking && ! is_array( $score ) ) ) {
+		return 'none';
 	}
-	$sf = t5fob_saved_score( $order );
-	return is_array( $sf ) && '' === t5fob_verify_fail_reason( $sf, 0 );
+	if ( $tracking ? t5_score_passes( $score ) : '' === t5fob_verify_fail_reason( $sf, 0 ) ) {
+		return 'good';
+	}
+	$s = t5fob_settings();
+	list( $parcels ) = t5fob_sf_numbers( $sf );
+	$min = $tracking ? max( 1, (int) t5_trk( 'min_parcels' ) ) : (int) $s['min_parcels'];
+	$max = $tracking ? (int) t5_trk( 'max_reports' ) : (int) $s['max_reports'];
+	return $parcels < $min && $sf['reports'] <= $max ? 'none' : 'bad';
 }
 
 /**
  * Stops the same phone, device or IP ordering again and again. Returns a rule-like object, or null.
- * A good record gets the limits from Settings; a bad or missing one gets a single order in 24 hours.
+ * A phone holds up to C orders at once and earns one more every g seconds, so one phone
+ * places at most C + 86400 / g orders a day, and a customer who waits is never stopped for good.
  */
 function t5fob_repeat_rule( $phone, $device, $ip ) {
 	global $wpdb;
@@ -132,37 +144,48 @@ function t5fob_repeat_rule( $phone, $device, $ip ) {
 	if ( ! $s['repeat_on'] ) {
 		return null;
 	}
-	$short = time() - 60 * (int) $s['repeat_mins'];
-	$rows  = $wpdb->get_results( $wpdb->prepare(
-		'SELECT order_id, phone, device, ip, created_at FROM ' . t5fob_table( 'recent' ) . '
-		 WHERE created_at > %s AND ( phone = %s OR device = %s OR ip = %s ) ORDER BY id DESC LIMIT 200',
-		gmdate( 'Y-m-d H:i:s', time() - DAY_IN_SECONDS ), $phone ?: '-', $device ?: '-', $ip ?: '-'
+	$t = t5fob_table( 'recent' );
+
+	// Device and IP: a burst in the short time.
+	$burst = $wpdb->get_results( $wpdb->prepare(
+		"SELECT phone, device, ip FROM $t WHERE created_at > %s AND ( device = %s OR ip = %s ) LIMIT 200",
+		gmdate( 'Y-m-d H:i:s', time() - 60 * (int) $s['repeat_mins'] ), $device ?: '-', $ip ?: '-'
 	) );
-	$day = 0;
-	$now = 0;
-	$ips = 0;
-	$new = false; // the same device on another number
-	$last = 0;
-	foreach ( $rows as $r ) {
-		$recent = strtotime( $r->created_at . ' UTC' ) > $short;
-		if ( $phone && $r->phone === $phone ) {
-			$last = $last ?: (int) $r->order_id;
-			$day++;
-			$now += $recent ? 1 : 0;
+	$numbers = array();
+	$ips     = 0;
+	foreach ( $burst as $r ) {
+		if ( $device && $r->device === $device && $r->phone !== $phone ) {
+			$numbers[ $r->phone ] = 1;
 		}
-		if ( $recent && $device && $r->device === $device && $r->phone !== $phone ) {
-			$new = true;
-		}
-		$ips += $recent && $r->ip === $ip ? 1 : 0;
+		$ips += $r->ip === $ip ? 1 : 0;
 	}
 	// A proxy nobody told us about makes all customers look like one IP: the IP count means nothing then.
 	$ip_counts = $s['behind_proxy'] || empty( $_SERVER['HTTP_CF_CONNECTING_IP'] );
-	$stop      = $new || ( $ip_counts && $ips >= (int) $s['repeat_ip'] );
-	if ( ! $stop && $day ) {
-		$good = ! t5fob_can_score() || t5fob_record_good( $last );
-		$stop = $good ? ( $now >= (int) $s['repeat_short'] || $day >= (int) $s['repeat_day'] ) : true;
+	if ( count( $numbers ) >= (int) $s['repeat_device'] || ( $ip_counts && $ips >= (int) $s['repeat_ip'] ) ) {
+		return (object) array( 'id' => 0, 'type' => 'repeat' );
 	}
-	return $stop ? (object) array( 'id' => 0, 'type' => 'repeat' ) : null;
+
+	// Phone: its own query, so a busy shared IP cannot push its orders out of the list.
+	$rows = $phone ? $wpdb->get_results( $wpdb->prepare(
+		"SELECT order_id, created_at FROM $t WHERE phone = %s AND created_at > %s ORDER BY id DESC LIMIT 50",
+		$phone, gmdate( 'Y-m-d H:i:s', time() - 2 * DAY_IN_SECONDS )
+	) ) : array();
+	if ( ! $rows ) {
+		return null;
+	}
+	$type   = t5fob_record_type( $rows[0]->order_id );
+	$cap    = (int) $s[ "repeat_{$type}_c" ];
+	$gap    = (int) $s[ "repeat_{$type}_h" ] * HOUR_IN_SECONDS;
+	$tokens = $cap;
+	$prev   = null;
+	foreach ( array_reverse( $rows ) as $r ) {
+		$at     = strtotime( $r->created_at . ' UTC' );
+		$tokens = null === $prev ? $tokens : min( $cap, $tokens + ( $at - $prev ) / $gap );
+		$tokens = max( 0, $tokens - 1 );
+		$prev   = $at;
+	}
+	$tokens = min( $cap, $tokens + ( time() - $prev ) / $gap );
+	return $tokens < 1 ? (object) array( 'id' => 0, 'type' => 'repeat' ) : null;
 }
 
 /** Remember each placed order for the repeat check. */

@@ -235,13 +235,16 @@ function t5fob_tab_settings() {
 			<span class="t5fob-muted">Tick this only if every blocked attempt shows the same IP. Leave it off otherwise, so nobody can fake their IP.</span></p>
 		<h2>Repeat orders</h2>
 		<p><label><input type="checkbox" name="repeat_on" value="1" <?php checked( $s['repeat_on'] ); ?>> <strong>Send repeat orders to WhatsApp instead of placing them</strong></label><br>
-			<span class="t5fob-muted">A customer with a bad or missing Steadfast record gets one order in 24 hours. The same device on another number within the minutes below is stopped too.</span></p>
-		<p><label for="t5fob-rm"><strong>Short time (minutes)</strong></label><br>
+			<span class="t5fob-muted">One phone can place a few orders at once, then gets one more each time the hours below pass. A customer with no record is treated as new, not as bad.</span></p>
+		<?php foreach ( array( 'good' => 'Good record', 'none' => 'No record', 'bad' => 'Bad record' ) as $k => $label ) : ?>
+			<p><strong><?php echo esc_html( $label ); ?></strong><br>
+				<label>Orders at once <input type="number" name="<?php echo esc_attr( "repeat_{$k}_c" ); ?>" min="1" max="48" value="<?php echo esc_attr( $s[ "repeat_{$k}_c" ] ); ?>"></label>
+				<label>Hours for one more order <input type="number" name="<?php echo esc_attr( "repeat_{$k}_h" ); ?>" min="1" max="48" value="<?php echo esc_attr( $s[ "repeat_{$k}_h" ] ); ?>"></label></p>
+		<?php endforeach; ?>
+		<p><label for="t5fob-rm"><strong>Short time for device and IP (minutes)</strong></label><br>
 			<input id="t5fob-rm" type="number" name="repeat_mins" min="1" value="<?php echo esc_attr( $s['repeat_mins'] ); ?>"></p>
-		<p><label for="t5fob-rs"><strong>Good record: orders allowed in the short time</strong></label><br>
-			<input id="t5fob-rs" type="number" name="repeat_short" min="1" value="<?php echo esc_attr( $s['repeat_short'] ); ?>"></p>
-		<p><label for="t5fob-rd"><strong>Good record: orders allowed in 24 hours</strong></label><br>
-			<input id="t5fob-rd" type="number" name="repeat_day" min="1" value="<?php echo esc_attr( $s['repeat_day'] ); ?>"></p>
+		<p><label for="t5fob-rv"><strong>One device: different numbers allowed in the short time</strong></label><br>
+			<input id="t5fob-rv" type="number" name="repeat_device" min="1" value="<?php echo esc_attr( $s['repeat_device'] ); ?>"></p>
 		<p><label for="t5fob-ri"><strong>One IP: orders allowed in the short time</strong></label><br>
 			<input id="t5fob-ri" type="number" name="repeat_ip" min="1" value="<?php echo esc_attr( $s['repeat_ip'] ); ?>"></p>
 			<?php if ( defined( 'T5_TRACKING_VERSION' ) ) : ?>
@@ -286,6 +289,13 @@ function t5fob_admin_guard( $nonce ) {
 add_action( 'admin_post_t5fob_save_settings', function () {
 	t5fob_admin_guard( 't5fob_save_settings' );
 	$old = t5fob_settings();
+	$limits = array();
+	foreach ( array( 'good', 'none', 'bad' ) as $k ) {
+		$c = min( 48, max( 1, (int) ( $_POST[ "repeat_{$k}_c" ] ?? $old[ "repeat_{$k}_c" ] ) ) );
+		$h = max( 1, (int) ( $_POST[ "repeat_{$k}_h" ] ?? $old[ "repeat_{$k}_h" ] ) );
+		$limits[ "repeat_{$k}_c" ] = $c;
+		$limits[ "repeat_{$k}_h" ] = min( $h, max( 1, (int) floor( 48 / $c ) ) ); // the table keeps 48 hours
+	}
 	update_option( 't5fob_settings', array(
 		'wa_number' => preg_replace( '/[^\d+]/', '', wp_unslash( $_POST['wa_number'] ?? '' ) ),
 		'wa_message' => sanitize_textarea_field( wp_unslash( $_POST['wa_message'] ?? '' ) ),
@@ -295,15 +305,14 @@ add_action( 'admin_post_t5fob_save_settings', function () {
 		'behind_proxy' => empty( $_POST['behind_proxy'] ) ? 0 : 1,
 		'repeat_on'    => empty( $_POST['repeat_on'] ) ? 0 : 1,
 		'repeat_mins'  => max( 1, (int) ( $_POST['repeat_mins'] ?? $old['repeat_mins'] ) ),
-		'repeat_short' => max( 1, (int) ( $_POST['repeat_short'] ?? $old['repeat_short'] ) ),
-		'repeat_day'   => max( 1, (int) ( $_POST['repeat_day'] ?? $old['repeat_day'] ) ),
+		'repeat_device' => max( 1, (int) ( $_POST['repeat_device'] ?? $old['repeat_device'] ) ),
 		'repeat_ip'    => max( 1, (int) ( $_POST['repeat_ip'] ?? $old['repeat_ip'] ) ),
 		'auto_verify' => empty( $_POST['auto_verify'] ) ? 0 : 1,
 		'min_ratio'   => max( 0, min( 100, (int) ( $_POST['min_ratio'] ?? $old['min_ratio'] ) ) ),
 		'min_parcels' => max( 1, (int) ( $_POST['min_parcels'] ?? $old['min_parcels'] ) ),
 		'max_reports' => max( 0, (int) ( $_POST['max_reports'] ?? $old['max_reports'] ) ),
 		'max_total'   => max( 0, (int) ( $_POST['max_total'] ?? $old['max_total'] ) ),
-	), false );
+	) + $limits, false );
 	wp_safe_redirect( t5fob_page_url( array( 'tab' => 'settings', 'saved' => 1 ) ) );
 	exit;
 } );
