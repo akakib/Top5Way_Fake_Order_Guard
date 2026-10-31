@@ -99,6 +99,89 @@ function t5fob_auto_verify( $order_id ) {
 	}
 }
 
+/** Can this site get a Steadfast record at all? Without one, only the counts apply. */
+function t5fob_can_score() {
+	if ( defined( 'T5_TRACKING_VERSION' ) ) {
+		return (bool) t5_trk( 'sf_api_key' );
+	}
+	$s = t5fob_settings();
+	return (bool) ( $s['sf_key'] ?: get_option( 'api_settings_tab_api_key' ) );
+}
+
+/** Reads the record saved on an earlier order: never asks Steadfast, and Tracking's own rules decide when it is active. */
+function t5fob_record_good( $order_id ) {
+	$order = wc_get_order( $order_id );
+	if ( ! $order ) {
+		return false;
+	}
+	if ( defined( 'T5_TRACKING_VERSION' ) ) {
+		$score = $order->get_meta( '_t5_sf_score' );
+		return is_array( $score ) && t5_score_passes( $score );
+	}
+	$sf = t5fob_saved_score( $order );
+	return is_array( $sf ) && '' === t5fob_verify_fail_reason( $sf, 0 );
+}
+
+/**
+ * Stops the same phone, device or IP ordering again and again. Returns a rule-like object, or null.
+ * A good record gets the limits from Settings; a bad or missing one gets a single order in 24 hours.
+ */
+function t5fob_repeat_rule( $phone, $device, $ip ) {
+	global $wpdb;
+	$s = t5fob_settings();
+	if ( ! $s['repeat_on'] ) {
+		return null;
+	}
+	$short = time() - 60 * (int) $s['repeat_mins'];
+	$rows  = $wpdb->get_results( $wpdb->prepare(
+		'SELECT order_id, phone, device, ip, created_at FROM ' . t5fob_table( 'recent' ) . '
+		 WHERE created_at > %s AND ( phone = %s OR device = %s OR ip = %s ) ORDER BY id DESC LIMIT 200',
+		gmdate( 'Y-m-d H:i:s', time() - DAY_IN_SECONDS ), $phone ?: '-', $device ?: '-', $ip ?: '-'
+	) );
+	$day = 0;
+	$now = 0;
+	$ips = 0;
+	$new = false; // the same device on another number
+	$last = 0;
+	foreach ( $rows as $r ) {
+		$recent = strtotime( $r->created_at . ' UTC' ) > $short;
+		if ( $phone && $r->phone === $phone ) {
+			$last = $last ?: (int) $r->order_id;
+			$day++;
+			$now += $recent ? 1 : 0;
+		}
+		if ( $recent && $device && $r->device === $device && $r->phone !== $phone ) {
+			$new = true;
+		}
+		$ips += $recent && $r->ip === $ip ? 1 : 0;
+	}
+	// A proxy nobody told us about makes all customers look like one IP: the IP count means nothing then.
+	$ip_counts = $s['behind_proxy'] || empty( $_SERVER['HTTP_CF_CONNECTING_IP'] );
+	$stop      = $new || ( $ip_counts && $ips >= (int) $s['repeat_ip'] );
+	if ( ! $stop && $day ) {
+		$good = ! t5fob_can_score() || t5fob_record_good( $last );
+		$stop = $good ? ( $now >= (int) $s['repeat_short'] || $day >= (int) $s['repeat_day'] ) : true;
+	}
+	return $stop ? (object) array( 'id' => 0, 'type' => 'repeat' ) : null;
+}
+
+/** Remember each placed order for the repeat check. */
+function t5fob_remember_order( $order ) {
+	global $wpdb;
+	$order = is_object( $order ) ? $order : wc_get_order( $order );
+	if ( $order ) {
+		$wpdb->insert( t5fob_table( 'recent' ), array(
+			'order_id'   => $order->get_id(),
+			'phone'      => t5fob_phone( $order->get_billing_phone() ),
+			'device'     => t5fob_current_device(),
+			'ip'         => t5fob_ip(),
+			'created_at' => t5fob_now(),
+		) );
+	}
+}
+add_action( 'woocommerce_checkout_order_processed', 't5fob_remember_order', 40 );
+add_action( 'woocommerce_store_api_checkout_order_processed', 't5fob_remember_order', 40 );
+
 // Runs after the customer already has the thank-you page, so checkout never waits for Steadfast.
 function t5fob_queue_verify( $order ) {
 	if ( defined( 'T5_TRACKING_VERSION' ) ) {

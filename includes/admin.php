@@ -233,6 +233,17 @@ function t5fob_tab_settings() {
 			<span class="t5fob-muted">Office and team connections, one per line. End with * for a whole range (203.0.113.*). Orders from these are never stopped.</span></p>
 		<p><label><input type="checkbox" name="behind_proxy" value="1" <?php checked( $s['behind_proxy'] ); ?>> <strong>This site is behind Cloudflare or another proxy</strong></label><br>
 			<span class="t5fob-muted">Tick this only if every blocked attempt shows the same IP. Leave it off otherwise, so nobody can fake their IP.</span></p>
+		<h2>Repeat orders</h2>
+		<p><label><input type="checkbox" name="repeat_on" value="1" <?php checked( $s['repeat_on'] ); ?>> <strong>Send repeat orders to WhatsApp instead of placing them</strong></label><br>
+			<span class="t5fob-muted">A customer with a bad or missing Steadfast record gets one order in 24 hours. The same device on another number within the minutes below is stopped too.</span></p>
+		<p><label for="t5fob-rm"><strong>Short time (minutes)</strong></label><br>
+			<input id="t5fob-rm" type="number" name="repeat_mins" min="1" value="<?php echo esc_attr( $s['repeat_mins'] ); ?>"></p>
+		<p><label for="t5fob-rs"><strong>Good record: orders allowed in the short time</strong></label><br>
+			<input id="t5fob-rs" type="number" name="repeat_short" min="1" value="<?php echo esc_attr( $s['repeat_short'] ); ?>"></p>
+		<p><label for="t5fob-rd"><strong>Good record: orders allowed in 24 hours</strong></label><br>
+			<input id="t5fob-rd" type="number" name="repeat_day" min="1" value="<?php echo esc_attr( $s['repeat_day'] ); ?>"></p>
+		<p><label for="t5fob-ri"><strong>One IP: orders allowed in the short time</strong></label><br>
+			<input id="t5fob-ri" type="number" name="repeat_ip" min="1" value="<?php echo esc_attr( $s['repeat_ip'] ); ?>"></p>
 			<?php if ( defined( 'T5_TRACKING_VERSION' ) ) : ?>
 				<p class="t5fob-muted">Auto verify is handled by Top5Way Tracking: WooCommerce &gt; Top5Way Tracking &gt; Courier.</p>
 				<p><button class="button t5fob-btn-green">Save</button></p>
@@ -282,6 +293,11 @@ add_action( 'admin_post_t5fob_save_settings', function () {
 		'sf_secret' => sanitize_text_field( wp_unslash( $_POST['sf_secret'] ?? '' ) ) ?: $old['sf_secret'],
 		'allow_ips' => implode( "\n", array_filter( array_map( fn( $l ) => preg_replace( '/[^0-9a-fA-F:.*]/', '', $l ), preg_split( '/[\r\n,]+/', wp_unslash( $_POST['allow_ips'] ?? '' ) ) ) ) ),
 		'behind_proxy' => empty( $_POST['behind_proxy'] ) ? 0 : 1,
+		'repeat_on'    => empty( $_POST['repeat_on'] ) ? 0 : 1,
+		'repeat_mins'  => max( 1, (int) ( $_POST['repeat_mins'] ?? $old['repeat_mins'] ) ),
+		'repeat_short' => max( 1, (int) ( $_POST['repeat_short'] ?? $old['repeat_short'] ) ),
+		'repeat_day'   => max( 1, (int) ( $_POST['repeat_day'] ?? $old['repeat_day'] ) ),
+		'repeat_ip'    => max( 1, (int) ( $_POST['repeat_ip'] ?? $old['repeat_ip'] ) ),
 		'auto_verify' => empty( $_POST['auto_verify'] ) ? 0 : 1,
 		'min_ratio'   => max( 0, min( 100, (int) ( $_POST['min_ratio'] ?? $old['min_ratio'] ) ) ),
 		'min_parcels' => max( 1, (int) ( $_POST['min_parcels'] ?? $old['min_parcels'] ) ),

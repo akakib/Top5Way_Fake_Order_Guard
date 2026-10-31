@@ -53,6 +53,21 @@ function t5fob_install() {
 		KEY created_at (created_at)
 	) $c;" );
 
+	// Orders of the last two days, so the repeat check is one indexed query at checkout.
+	dbDelta( 'CREATE TABLE ' . t5fob_table( 'recent' ) . " (
+		id bigint(20) unsigned NOT NULL AUTO_INCREMENT,
+		order_id bigint(20) unsigned NOT NULL DEFAULT 0,
+		phone varchar(32) NOT NULL DEFAULT '',
+		device varchar(64) NOT NULL DEFAULT '',
+		ip varchar(64) NOT NULL DEFAULT '',
+		created_at datetime NOT NULL,
+		PRIMARY KEY  (id),
+		KEY phone (phone),
+		KEY device (device),
+		KEY ip (ip),
+		KEY created_at (created_at)
+	) $c;" );
+
 	update_option( 't5fob_db_version', T5FOB_DB_VERSION );
 }
 
@@ -64,6 +79,11 @@ function t5fob_settings() {
 		'sf_secret'  => '',
 		'allow_ips'   => '', // office / team: never blocked, never sent to WhatsApp
 		'behind_proxy' => 0, // the site sits behind Cloudflare or another proxy
+		'repeat_on'    => 1,
+		'repeat_mins'  => 3,
+		'repeat_short' => 2, // orders from one phone in those minutes, good record
+		'repeat_day'   => 3, // orders from one phone in 24 hours, good record
+		'repeat_ip'    => 3, // orders from one IP in those minutes
 		'auto_verify' => 0,
 		'min_ratio'   => 60,
 		'min_parcels' => 2,
@@ -223,6 +243,7 @@ function t5fob_log_attempt( $rule, $name, $phone, $address, array $items, $total
 add_action( 't5fob_cleanup', function () {
 	global $wpdb;
 	$wpdb->query( $wpdb->prepare( 'DELETE FROM ' . t5fob_table( 'attempts' ) . ' WHERE created_at < %s', gmdate( 'Y-m-d H:i:s', time() - 180 * DAY_IN_SECONDS ) ) );
+	$wpdb->query( $wpdb->prepare( 'DELETE FROM ' . t5fob_table( 'recent' ) . ' WHERE created_at < %s', gmdate( 'Y-m-d H:i:s', time() - 2 * DAY_IN_SECONDS ) ) );
 	$wpdb->query( $wpdb->prepare( 'DELETE FROM ' . t5fob_table( 'rules' ) . ' WHERE expires_at IS NOT NULL AND expires_at < %s', gmdate( 'Y-m-d H:i:s', time() - 90 * DAY_IN_SECONDS ) ) );
 } );
 
@@ -245,7 +266,7 @@ function t5fob_code_to_id( $q ) {
 }
 
 function t5fob_type_label( $type ) {
-	$l = array( 'phone' => 'Phone', 'device' => 'Device', 'ip' => 'IP' );
+	$l = array( 'phone' => 'Phone', 'device' => 'Device', 'ip' => 'IP', 'repeat' => 'Repeat order' );
 	return $l[ $type ] ?? $type;
 }
 

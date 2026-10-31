@@ -50,7 +50,7 @@ function t5fob_render_box( $post_or_order ) {
 
 	// Steadfast allows only a few searches a day, so use the record saved at checkout when there is one.
 	$sf = t5fob_saved_score( $order );
-	if ( ! is_array( $sf ) ) {
+	if ( ! is_array( $sf ) && ! defined( 'T5_TRACKING_VERSION' ) ) { // with Tracking active, only Tracking asks Steadfast
 		$sf = t5fob_score_order( $order );
 		if ( $sf ) {
 			$order->save();

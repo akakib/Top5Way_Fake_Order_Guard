@@ -61,7 +61,7 @@ function t5fob_check_checkout( $data, $errors ) {
 	$device = t5fob_current_device();
 	$ip     = t5fob_ip();
 
-	$rule = t5fob_allowed_ip( $ip ) ? null : t5fob_find_rule( $phone, $device, $ip );
+	$rule = t5fob_allowed_ip( $ip ) ? null : ( t5fob_find_rule( $phone, $device, $ip ) ?: t5fob_repeat_rule( $phone, $device, $ip ) );
 	if ( ! $rule ) {
 		return;
 	}
@@ -138,7 +138,8 @@ add_action( 'woocommerce_store_api_checkout_update_order_from_request', function
 	$device = t5fob_current_device();
 	$ip     = t5fob_ip();
 	$order->update_meta_data( '_t5fob_ip', $ip );
-	$rule   = t5fob_allowed_ip( $ip ) ? null : t5fob_find_rule( t5fob_phone( $order->get_billing_phone() ), $device, $ip );
+	$phone  = t5fob_phone( $order->get_billing_phone() );
+	$rule   = t5fob_allowed_ip( $ip ) ? null : ( t5fob_find_rule( $phone, $device, $ip ) ?: t5fob_repeat_rule( $phone, $device, $ip ) );
 	if ( ! $rule ) {
 		return;
 	}
