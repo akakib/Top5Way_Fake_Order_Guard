@@ -163,7 +163,7 @@ function t5fob_repeat_rule( $phone, $device, $ip ) {
 function t5fob_remember_order( $order ) {
 	global $wpdb;
 	$order = is_object( $order ) ? $order : wc_get_order( $order );
-	if ( $order ) {
+	if ( $order && t5fob_whatsapp_number() ) {
 		$wpdb->insert( t5fob_table( 'recent' ), array(
 			'order_id'   => $order->get_id(),
 			'phone'      => t5fob_phone( $order->get_billing_phone() ),
@@ -175,6 +175,20 @@ function t5fob_remember_order( $order ) {
 }
 add_action( 'woocommerce_checkout_order_processed', 't5fob_remember_order', 40 );
 add_action( 'woocommerce_store_api_checkout_order_processed', 't5fob_remember_order', 40 );
+
+function t5fob_is_prepaid( $method ) {
+	return in_array( (string) $method, (array) t5fob_settings()['paid_methods'], true );
+}
+
+/** A paid order proves a real customer, so it does not use up their repeat orders. */
+function t5fob_forget_paid_order( $order_id ) {
+	global $wpdb;
+	$order = wc_get_order( $order_id );
+	if ( $order && t5fob_is_prepaid( $order->get_payment_method() ) ) {
+		$wpdb->delete( t5fob_table( 'recent' ), array( 'order_id' => $order->get_id() ) );
+	}
+}
+add_action( 'woocommerce_payment_complete', 't5fob_forget_paid_order' );
 
 // Runs after the customer already has the thank-you page, so checkout never waits for Steadfast.
 function t5fob_queue_verify( $order ) {

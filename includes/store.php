@@ -80,6 +80,7 @@ function t5fob_settings() {
 		'allow_ips'   => '', // office / team: never blocked, never sent to WhatsApp
 		'behind_proxy' => 0, // the site sits behind Cloudflare or another proxy
 		'repeat_on'    => 1,
+		'paid_methods' => array(), // payments taken before the order: the repeat rule leaves these alone
 		// One phone: orders at once, then hours until one more. The table keeps 48 hours, so at once x hours stays within that.
 		'repeat_good_c' => 3,
 		'repeat_good_h' => 6,

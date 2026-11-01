@@ -7,6 +7,9 @@ defined( 'ABSPATH' ) || exit;
 
 // Device id: a random id kept in a cookie (and localStorage, so clearing cookies alone does not reset it).
 add_action( 'wp_enqueue_scripts', function () {
+	if ( ! t5fob_whatsapp_number() ) {
+		return;
+	}
 	if ( function_exists( 'is_checkout' ) && is_checkout() && ! is_order_received_page() ) {
 		$deps = has_block( 'woocommerce/checkout' ) ? array( 'jquery', 'wp-api-fetch' ) : array( 'jquery' );
 		wp_enqueue_script( 't5fob-device', T5FOB_URL . 'assets/device.js', $deps, T5FOB_VERSION, true );
@@ -52,6 +55,15 @@ add_action( 'woocommerce_checkout_create_order', function ( $order ) {
 // Runs after WooCommerce's own checks and before the order exists.
 add_action( 'woocommerce_after_checkout_validation', 't5fob_check_checkout', 999, 2 );
 
+/** The block list always applies. The repeat rule does not apply to payments taken before the order. */
+function t5fob_stop_rule( $phone, $device, $ip, $method ) {
+	// Stopped customers are sent to WhatsApp: without the number the plugin stays off.
+	if ( ! t5fob_whatsapp_number() || t5fob_allowed_ip( $ip ) ) {
+		return null;
+	}
+	return t5fob_find_rule( $phone, $device, $ip ) ?: ( t5fob_is_prepaid( $method ) ? null : t5fob_repeat_rule( $phone, $device, $ip ) );
+}
+
 function t5fob_check_checkout( $data, $errors ) {
 	// Let the customer fix normal form errors first (wrong phone etc.).
 	if ( $errors->has_errors() || wc_notice_count( 'error' ) > 0 ) {
@@ -61,7 +73,7 @@ function t5fob_check_checkout( $data, $errors ) {
 	$device = t5fob_current_device();
 	$ip     = t5fob_ip();
 
-	$rule = t5fob_allowed_ip( $ip ) ? null : ( t5fob_find_rule( $phone, $device, $ip ) ?: t5fob_repeat_rule( $phone, $device, $ip ) );
+	$rule = t5fob_stop_rule( $phone, $device, $ip, $data['payment_method'] ?? '' );
 	if ( ! $rule ) {
 		return;
 	}
@@ -71,12 +83,6 @@ function t5fob_check_checkout( $data, $errors ) {
 	$address = trim( implode( ', ', array_filter( array( $data['billing_address_1'] ?? '', $data['billing_address_2'] ?? '', $data['billing_city'] ?? '' ) ) ) );
 	$total   = (float) WC()->cart->get_total( 'edit' );
 	t5fob_log_attempt( $rule, $name, $data['billing_phone'] ?? '', $address, $items, $total, $ip, $device, t5fob_cart_snapshot( $data['payment_method'] ?? '' ) );
-
-	// No WhatsApp number to send them to: still no order, and a plain message instead of an empty link.
-	if ( ! t5fob_whatsapp_number() ) {
-		$errors->add( 't5fob_blocked', T5FOB_NO_WHATSAPP );
-		return;
-	}
 
 	$url = t5fob_whatsapp_url( $name, $address, $data['billing_phone'] ?? '', $items, t5fob_shipping_label(), $total );
 
@@ -90,8 +96,6 @@ function t5fob_check_checkout( $data, $errors ) {
 	wp_redirect( $url ); // phpcs:ignore WordPress.Security.SafeRedirect -- external WhatsApp link on purpose.
 	exit;
 }
-
-const T5FOB_NO_WHATSAPP = 'We could not place this order online. Please contact us to order.';
 
 function t5fob_whatsapp_message() {
 	return t5fob_settings()['wa_message'] ?: "Please confirm your order on WhatsApp.\nTap Send in WhatsApp and our team will reply.";
@@ -139,7 +143,7 @@ add_action( 'woocommerce_store_api_checkout_update_order_from_request', function
 	$ip     = t5fob_ip();
 	$order->update_meta_data( '_t5fob_ip', $ip );
 	$phone  = t5fob_phone( $order->get_billing_phone() );
-	$rule   = t5fob_allowed_ip( $ip ) ? null : ( t5fob_find_rule( $phone, $device, $ip ) ?: t5fob_repeat_rule( $phone, $device, $ip ) );
+	$rule   = t5fob_stop_rule( $phone, $device, $ip, $order->get_payment_method() );
 	if ( ! $rule ) {
 		return;
 	}
@@ -148,9 +152,6 @@ add_action( 'woocommerce_store_api_checkout_update_order_from_request', function
 	$address = trim( implode( ', ', array_filter( array( $order->get_billing_address_1(), $order->get_billing_address_2(), $order->get_billing_city() ) ) ) );
 	$total   = (float) WC()->cart->get_total( 'edit' );
 	t5fob_log_attempt( $rule, $name, $order->get_billing_phone(), $address, $items, $total, $ip, $device, t5fob_cart_snapshot( $order->get_payment_method() ) );
-	if ( ! t5fob_whatsapp_number() ) {
-		throw new \Automattic\WooCommerce\StoreApi\Exceptions\RouteException( 't5fob_blocked', T5FOB_NO_WHATSAPP, 400 ); // phpcs:ignore
-	}
 	$url = t5fob_whatsapp_url( $name, $address, $order->get_billing_phone(), $items, t5fob_shipping_label(), $total );
 	// Plain text with the number, in case the button below cannot be added; device.js adds it from the extra data.
 	throw new \Automattic\WooCommerce\StoreApi\Exceptions\RouteException( 't5fob_blocked', preg_replace( '/\s+/', ' ', t5fob_whatsapp_message() ) . ' WhatsApp: +' . t5fob_whatsapp_number(), 400, array( 't5fob_url' => $url, 't5fob_box' => t5fob_whatsapp_box( $url ) ) ); // phpcs:ignore

@@ -44,6 +44,24 @@ function t5fob_pagination( $total, $paged, $per ) {
 	echo '</div>';
 }
 
+// At the top of the plugin page and the Plugins page, until every feature has its details.
+add_action( 'admin_notices', function () {
+	global $pagenow;
+	if ( ! current_user_can( 'manage_woocommerce' ) || ( 'plugins.php' !== $pagenow && 't5fob' !== sanitize_key( $_GET['page'] ?? '' ) ) ) { // phpcs:ignore WordPress.Security.NonceVerification
+		return;
+	}
+	$rows = '';
+	if ( ! t5fob_whatsapp_number() ) {
+		$rows .= '<li><strong>Fake Order Guard:</strong> add your WhatsApp number.</li>';
+	}
+	if ( ! t5fob_can_score() ) {
+		$rows .= '<li><strong>Steadfast record check:</strong> add the Steadfast API key and secret key.</li>';
+	}
+	if ( $rows ) {
+		echo '<div class="notice notice-info"><p><strong>Fake Order Guard: add these details to start each feature</strong></p><ul style="list-style:disc;margin-left:20px">' . $rows . '</ul><p>Each feature works with your own details and starts by itself once they are saved in <a href="' . esc_url( t5fob_page_url( array( 'tab' => 'settings' ) ) ) . '">Settings</a>. Until then it stays paused.</p></div>'; // phpcs:ignore WordPress.Security.EscapeOutput -- fixed text and an escaped link
+	}
+} );
+
 function t5fob_render_page() {
 	$tab  = sanitize_key( $_GET['tab'] ?? 'attempts' );
 	$tabs = array( 'attempts' => 'Blocked attempts', 'rules' => 'Block list', 'settings' => 'Settings' );
@@ -51,9 +69,6 @@ function t5fob_render_page() {
 		$tab = 'attempts';
 	}
 	echo '<div class="wrap t5fob-wrap"><h1>Fake Order Guard</h1>';
-	if ( ! t5fob_whatsapp_number() ) {
-		echo '<div class="notice notice-warning"><p>Add your WhatsApp number in <a href="' . esc_url( t5fob_page_url( array( 'tab' => 'settings' ) ) ) . '">Settings</a>. Until then blocked customers only see a message asking them to contact you, and repeat orders are not stopped.</p></div>';
-	}
 	if ( isset( $_GET['saved'] ) ) {
 		echo '<div class="notice notice-success is-dismissible"><p>Saved.</p></div>';
 	}
@@ -217,7 +232,7 @@ function t5fob_tab_settings() {
 	<form method="post" action="<?php echo esc_url( admin_url( 'admin-post.php' ) ); ?>" class="t5fob-settings">
 		<input type="hidden" name="action" value="t5fob_save_settings">
 		<?php wp_nonce_field( 't5fob_save_settings' ); ?>
-		<p><label for="t5fob-wa"><strong>WhatsApp number</strong></label><br>
+		<p><label for="t5fob-wa"><strong>WhatsApp number (required)</strong></label><br>
 			<input id="t5fob-wa" type="text" name="wa_number" value="<?php echo esc_attr( $s['wa_number'] ); ?>" placeholder="01XXXXXXXXX"><br>
 			<span class="t5fob-muted">Blocked customers are sent to this WhatsApp with their order already typed.</span></p>
 		<p><label for="t5fob-wm"><strong>Message to blocked customers</strong></label><br>
@@ -239,9 +254,13 @@ function t5fob_tab_settings() {
 		<h2>Repeat orders</h2>
 		<p><label><input type="checkbox" name="repeat_on" value="1" <?php checked( $s['repeat_on'] ); ?>> <strong>Send repeat orders to WhatsApp instead of placing them</strong></label><br>
 			<span class="t5fob-muted">One phone can place a few orders at once, then gets one more each time the hours below pass. A customer with no record is treated as new, not as bad.</span></p>
-		<?php if ( ! t5fob_whatsapp_number() ) : ?>
-			<div class="notice notice-warning inline"><p>Repeat orders are not stopped until you add a WhatsApp number above.</p></div>
-		<?php endif; ?>
+		<p><strong>Never treat these payments as repeat orders</strong><br>
+			<?php foreach ( WC()->payment_gateways()->payment_gateways() as $t5fob_id => $t5fob_gw ) : ?>
+				<?php if ( 'yes' === $t5fob_gw->enabled && 'cod' !== $t5fob_id ) : ?>
+					<label style="display:block"><input type="checkbox" name="paid_methods[]" value="<?php echo esc_attr( $t5fob_id ); ?>" <?php checked( in_array( $t5fob_id, (array) $s['paid_methods'], true ) ); ?>> <?php echo esc_html( $t5fob_gw->get_title() ); ?></label>
+				<?php endif; ?>
+			<?php endforeach; ?>
+			<span class="t5fob-muted">The customer pays before the order counts, so it cannot become a fake parcel. Numbers on your block list stay blocked.</span></p>
 		<?php foreach ( array( 'good' => 'Good record', 'none' => 'No record', 'bad' => 'Bad record' ) as $k => $label ) : ?>
 			<p><strong><?php echo esc_html( $label ); ?></strong><br>
 				<label>Orders at once <input type="number" name="<?php echo esc_attr( "repeat_{$k}_c" ); ?>" min="1" max="48" value="<?php echo esc_attr( $s[ "repeat_{$k}_c" ] ); ?>"></label>
@@ -291,6 +310,7 @@ add_action( 'admin_post_t5fob_save_settings', function () {
 		'allow_ips' => implode( "\n", array_filter( array_map( fn( $l ) => preg_replace( '/[^0-9a-fA-F:.*]/', '', $l ), preg_split( '/[\r\n,]+/', wp_unslash( $_POST['allow_ips'] ?? '' ) ) ) ) ),
 		'behind_proxy' => empty( $_POST['behind_proxy'] ) ? 0 : 1,
 		'repeat_on'    => empty( $_POST['repeat_on'] ) ? 0 : 1,
+		'paid_methods' => array_values( array_map( 'sanitize_key', (array) wp_unslash( $_POST['paid_methods'] ?? array() ) ) ),
 		'repeat_mins'  => max( 1, (int) ( $_POST['repeat_mins'] ?? $old['repeat_mins'] ) ),
 		'repeat_device' => max( 1, (int) ( $_POST['repeat_device'] ?? $old['repeat_device'] ) ),
 		'repeat_ip'    => max( 1, (int) ( $_POST['repeat_ip'] ?? $old['repeat_ip'] ) ),
