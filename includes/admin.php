@@ -252,8 +252,8 @@ function t5fob_tab_settings() {
 			<div class="notice notice-warning inline"><p>This site looks like it is behind Cloudflare. Tick the box above, or real customers may be stopped as one IP.</p></div>
 		<?php endif; ?>
 		<h2>Repeat orders</h2>
-		<p><label><input type="checkbox" name="repeat_on" value="1" <?php checked( $s['repeat_on'] ); ?>> <strong>Send repeat orders to WhatsApp instead of placing them</strong></label><br>
-			<span class="t5fob-muted">One phone can place a few orders at once, then gets one more each time the hours below pass. A customer with no record is treated as new, not as bad.</span></p>
+		<p><label><input type="checkbox" name="repeat_on" value="1" <?php checked( $s['repeat_on'] ); ?>> <strong>Automatic repeat-order block</strong></label><br>
+			<span class="t5fob-muted">On: repeat orders go to WhatsApp instead of being placed. One phone can place a few orders at once, then gets one more each time the hours below pass. A customer with no record is treated as new, not as bad.<br>Off: this check does not run and orders are not counted. Your block list keeps working.</span></p>
 		<p><strong>Never treat these payments as repeat orders</strong><br>
 			<?php foreach ( WC()->payment_gateways()->payment_gateways() as $t5fob_id => $t5fob_gw ) : ?>
 				<?php if ( 'yes' === $t5fob_gw->enabled && 'cod' !== $t5fob_id ) : ?>

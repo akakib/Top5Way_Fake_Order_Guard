@@ -163,7 +163,7 @@ function t5fob_repeat_rule( $phone, $device, $ip ) {
 function t5fob_remember_order( $order ) {
 	global $wpdb;
 	$order = is_object( $order ) ? $order : wc_get_order( $order );
-	if ( $order && t5fob_whatsapp_number() ) {
+	if ( $order && t5fob_settings()['repeat_on'] && t5fob_whatsapp_number() ) {
 		$wpdb->insert( t5fob_table( 'recent' ), array(
 			'order_id'   => $order->get_id(),
 			'phone'      => t5fob_phone( $order->get_billing_phone() ),
